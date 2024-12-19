@@ -1,0 +1,10 @@
+html {
+  color-scheme: normal !important;
+}
+
+:root, #root, body {
+  /* background-color: grey !important; */
+  /* background: none !important; */
+  background-image: url("assets/background.png") !important;
+  background-size: cover !important;
+}
