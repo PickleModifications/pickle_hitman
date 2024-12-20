@@ -117,13 +117,13 @@ document.addEventListener('DOMContentLoaded', (event) => {
             window.postMessage(data, '*');
         });
     });
-    setTimeout(() => {
-        DebugSendConfig();
-        setTimeout(() => {
-            DebugSendSections()
-        }, 100);
-        setTimeout(() => {
-            DebugCurrentHit();
-        }, 100);
-    }, 1000);
+    // setTimeout(() => {
+    //     DebugSendConfig();
+    //     setTimeout(() => {
+    //         DebugSendSections()
+    //     }, 100);
+    //     setTimeout(() => {
+    //         DebugCurrentHit();
+    //     }, 100);
+    // }, 1000);
 });

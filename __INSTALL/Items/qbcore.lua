@@ -1,0 +1,1 @@
+["challengecoin"] 					= {["name"] = "challengecoin",  	     		        ["label"] = "Challenge Coin",	 		    ["weight"] = 1, 		["type"] = "item", 		["image"] = "challengecoin.png", 				["unique"] = false, 	    ["useable"] = true, 	["shouldClose"] = true,   	["combinable"] = nil,   ["description"] = "This can be used to place hits on other players."},

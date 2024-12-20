@@ -217,7 +217,7 @@ function OverlayApp() {
             <Text size="15px" fw={600} c={"white"}>{translate("current_hit")}</Text>
           </Flex>
           <Flex gap={8} direction={"row"} align={"center"}>
-            <img style={{pointerEvents: "none"}} width={6 * 12} height={8 * 12} src={"nui/images/g_f_y_ballas_01.png"}></img>
+            <img style={{pointerEvents: "none"}} width={6 * 12} height={8 * 12} src={currentHit.image}></img>
             <Flex gap={8} direction={"column"}>
               <Flex gap={8}>
                 <Text size="15px" fw={600}>{translate("current_hit_name")}:</Text>
@@ -239,6 +239,7 @@ function OverlayApp() {
                 fetchNui("useCamera", {})
               }}>{translate("current_hit_camera")}</Button>
               <Button color={"dark.4"} style={{marginTop: "auto"}} onClick={() => {
+                setInteracting(false)
                 fetchNui("returnToGame", {})
               }}>{translate("current_hit_return")}</Button>
               <Button color="red" style={{marginTop: "auto"}} onClick={() => {
