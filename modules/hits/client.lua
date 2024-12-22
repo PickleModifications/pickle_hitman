@@ -1,7 +1,6 @@
 local HitInfo = {}
 HitRegistry = {}
 DutyInteractions = {}
-LOCAL_ON_DUTY = false
 HIDE_INTERACTIONS = false
 
 function HitsToArray(hits)
@@ -10,7 +9,7 @@ function HitsToArray(hits)
     for k, v in pairs(hits) do
         table.insert(hitsArray, {
             id = v.target,
-            source = v.source,
+            hitmanId = v.hitmanId,
             image = v.image,
             description = v.description,
             name = v.targetname,
@@ -54,11 +53,80 @@ function GetNPCScenarioFromRisk(risk)
     return GetScenarioFromChances(chances)
 end
 
+function StartHitBurialMission()
+    if not CurrentHit then return end
+    CurrentHit.objective = _L("hit_objective_bury_body")
+    ShowNotification(CurrentHit.objective)
+    SendNUIMessage({
+        type = "setCurrentHit",
+        currentHit = CurrentHit
+    })
+    CreateThread(function()
+        local id = CurrentHit.id
+        local locations = {}
+        for i=1, #Config.Burial.locations do 
+            local location = Config.Burial.locations[i]
+            local newLocation = {}
+            if Config.Burial.blip.enabled then
+                newLocation.blip = CreateBlip(Config.Burial.blip)
+            end
+            newLocation.interact = CreateInteraction({
+                label = _L("hit_interact_bury_body", CurrentHit.reward),
+                coords = location.coords,
+                heading = location.heading,
+            }, function()
+                -- Bury player.
+                TriggerServerEvent("pickle_hitman:completeHit", CurrentHit.id)
+            end)
+            locations[#locations + 1] = newLocation
+        end
+        while CurrentHit and CurrentHit.id == id do
+            Wait(1000)
+        end
+        for i=1, #locations do 
+            if locations[i].interact then
+                DeleteInteraction(locations[i].interact)
+            end
+            if locations[i].blip then
+                RemoveBlip(locations[i].blip)
+            end
+        end
+    end)
+end
+
+function OnHitDeath()
+    if not CurrentHit then return end
+    CurrentHit.objective = _L("hit_objective_take_photo")
+    CurrentHit.requestConfirmation = true
+    CurrentHit.confirmedTarget = false
+    ShowNotification(CurrentHit.objective)
+    SendNUIMessage({
+        type = "setCurrentHit",
+        currentHit = CurrentHit
+    })
+    local id = CurrentHit.id
+    CreateThread(function()
+        local confirmed = false
+        while CurrentHit and CurrentHit.id == id do
+            if CurrentHit.confirmedTarget then
+                confirmed = true
+                usingCamera = false
+                if CurrentHit.npc then
+                    StartHitBurialMission()
+                else
+                    TriggerServerEvent("pickle_hitman:completeHit", CurrentHit.id)
+                end
+                break
+            end
+            Wait(1000)
+        end
+    end)
+end
+
 function PerformScenario(scenario)
     local id = CurrentHit.id
-    SetTimeout(0, function()
+    SetTimeout(1000, function()
         SetEntityHealth(CurrentHit.targetNPC, 0)
-        CameraLoop({trackType = "ped", netId = PedToNet(CurrentHit.targetNPC)})
     end)
     if scenario == "fleeFoot" or (scenario == "fleeVehicle" and CurrentHit.vehicle == nil) then
         while CurrentHit and CurrentHit.id == id and CurrentHit.targetNPC do
@@ -178,27 +246,106 @@ function GetClosestVehicle()
     return closestVehicle, closestDistance
 end
 
+function RevivePed(ped)
+    local coords = GetEntityCoords(PlayerPedId())
+    ResurrectPed(ped)
+    SetEntityHealth(ped, 200)
+    SetEntityCoords(ped, coords.x, coords.y, coords.z + 0.5)
+    ClearPedTasksImmediately(ped)
+end
+
 function VehicleInteract()
+    if not CurrentHit then return false end
     local vehicle = GetClosestVehicle()
     local netId = VehToNet(vehicle)
     if not netId then return false end
-    if not IsVehicleSeatFree(vehicle, 2) and not GetPedInVehicleSeat(vehicle, 2) then ShowNotification("no_back_seat") return false end
-    TriggerServerEvent("pickle_hitman:vehicleInteract", netId)
+    if not CurrentHit.confirmedTarget then return ShowNotification(_L("hit_interact_must_confirm")) end
+    if CurrentHit.insideVehicle then
+        local vehicle = CurrentHit.insideVehicle
+        DetachEntity(CurrentHit.targetNPC, true, true)
+        local boneIndex = GetEntityBoneIndexByName(vehicle, "boot")
+        local boneCoords = GetWorldPositionOfEntityBone(vehicle, boneIndex)
+        local offset = GetOffsetFromEntityGivenWorldCoords(vehicle, boneCoords.x, boneCoords.y, boneCoords.z)
+        local worldCoords = GetOffsetFromEntityInWorldCoords(vehicle, offset.x, offset.y - 1.0, offset.z - 0.5)
+        SetEntityCoords(CurrentHit.targetNPC, worldCoords.x, worldCoords.y, worldCoords.z)
+        ClearPedTasksImmediately(CurrentHit.targetNPC)
+        SetEntityHealth(CurrentHit.targetNPC, 0)
+        CurrentHit.insideVehicle = nil
+    else
+        if CurrentHit.carrying then
+            CurrentHit.carrying = false
+            SetTimeout(100, function()
+                VehicleInteract()
+            end)
+        else
+            CurrentHit.insideVehicle = vehicle
+            -- local obj = CreateProp(`prop_tennis_ball`, GetEntityCoords(vehicle), true, true)
+            -- SetEntityVisible(obj, false)
+            RevivePed(CurrentHit.targetNPC)
+            local boneIndex = GetEntityBoneIndexByName(vehicle, "boot")
+            local boneCoords = GetWorldPositionOfEntityBone(vehicle, boneIndex)
+            local offset = GetOffsetFromEntityGivenWorldCoords(vehicle, boneCoords.x, boneCoords.y, boneCoords.z)
+            AttachEntityToEntity(CurrentHit.targetNPC, vehicle, 0, offset.x, offset.y, offset.z, 0.0, 0.0, 0.0, false, false, false, false, 20, true)
+            -- AttachEntityToEntity(CurrentHit.targetNPC, obj, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false, false, false, false, 20, true)
+            CreateThread(function()
+                while CurrentHit and CurrentHit.insideVehicle do 
+                    if not IsEntityPlayingAnim(CurrentHit.targetNPC, "timetable@floyd@cryingonbed@base", "base", 3) then
+                        PlayAnim(CurrentHit.targetNPC, "timetable@floyd@cryingonbed@base", "base", 8.0, -8.0, -1, 1, 0, 0, 0, 0)
+                    end
+                    Wait(100)
+                end
+            end)
+        end
+    end
     return true
 end
 
 function HitInteract(identifier, interactType)
     local entity = PlayerPedId()
     local data = nil
-    if interactType == "detain" then
+    if interactType == "carry" then
+        if not CurrentHit or CurrentHit.carrying then return end
+        if CurrentHit.insideVehicle then return ShowNotification(_L("hit_interact_must_outcar")) end
+        if not CurrentHit.confirmedTarget then return ShowNotification(_L("hit_interact_must_confirm")) end
+        if not NetworkDoesNetworkIdExist(HitInfo[identifier].netId) then return end
+
         local ped = NetToPed(HitInfo[identifier].netId)
-        data = {
-            coords = GetOffsetFromEntityInWorldCoords(entity, 0.0, 0.8, -1.5),
-            heading = GetEntityHeading(entity),
-        }
-    end
-    if interactType == "custody" then
-        TriggerServerEvent("pickle_hitman:takeCustody", identifier)
+        if not DoesEntityExist(ped) or GetEntityHealth(ped) > 0 then return ShowNotification(_L("hit_interact_must_dead")) end
+        local playerPed = PlayerPedId()
+        local coords = GetEntityCoords(playerPed)
+        RevivePed(ped)
+        ClearPedTasksImmediately(playerPed)
+
+        CurrentHit.carrying = true
+        CreateThread(function()
+            AttachEntityToEntity(ped, playerPed, 0, 0.27, 0.15, 0.63, 0.5, 0.5, 180, false, false, false, false, 2, true)
+            while CurrentHit and CurrentHit.carrying and CurrentHit.id == identifier do
+                if not IsEntityPlayingAnim(playerPed, "missfinale_c2mcs_1", "fin_c2_mcs_1_camman", 3) then
+                    PlayAnim(playerPed, "missfinale_c2mcs_1", "fin_c2_mcs_1_camman", 8.0, -8.0, -1, 49, 0, 0, 0, 0)
+                    Wait(10)
+                end
+                if not IsEntityPlayingAnim(ped, "nm", "firemans_carry", 3) then
+                    PlayAnim(ped, "nm", "firemans_carry", 8.0, -8.0, -1, 1, 0, 0, 0, 0)
+                    Wait(10)
+                end
+                DisableControlAction(0, 140, true) -- Disable melee attack light
+                DisableControlAction(0, 141, true) -- Disable melee attack heavy
+                DisableControlAction(0, 142, true) -- Disable melee attack alternate
+                DisableControlAction(0, 75, true)  -- Disable exit vehicle
+                DisableControlAction(0, 23, true) -- Disable enter vehicle
+                
+                ShowInteractText("[E] - " .. _L("stop_carrying_body"))
+                if IsControlJustPressed(1, 51) then
+                    CurrentHit.carrying = false
+                    break
+                end
+                Wait(0)
+            end
+            ClearPedTasks(playerPed)
+            ClearPedTasks(ped)
+            DetachEntity(ped, true, true)
+            SetEntityHealth(ped, 0)
+        end)
         return
     end
     TriggerServerEvent("pickle_hitman:hitInteract", identifier, interactType, data)
@@ -210,15 +357,9 @@ function ShowHitTargetOptions(identifier)
     if not hitInfo then return end
     local options = {}
     local enabledOptions = {}
-
-    if not hitInfo.isDetained then
-        options[#options + 1] = { name = "detain", label = _L("hit_interact_detain"), onSelect = function() HitInteract(identifier, "detain") end }
-        enabledOptions.detain = true
-    else
-        options[#options + 1] = { name = "drag", label = _L("hit_interact_drag"), onSelect = function() HitInteract(identifier, "drag") end }
-        enabledOptions.drag = true
-    end
     if hitInfo.netId then
+        options[#options + 1] = { name = "carry", label = _L("hit_interact_carry"), onSelect = function() HitInteract(identifier, "carry") end }
+        enabledOptions.carry = true
         AddTargetNetworkId(hitInfo.netId, options)
     end
     return enabledOptions
@@ -229,10 +370,8 @@ function RemoveHitTargetOptions(identifier)
     local hitInfo = HitInfo[identifier]
     if not hitInfo then return end
     local options = {
-        { name = "detain", label = _L("hit_interact_detain") },
-        { name = "drag", label = _L("hit_interact_drag") },
+        { name = "carry", label = _L("hit_interact_carry") },
         { name = "vehicle", label = _L("hit_interact_vehicle") },
-        { name = "custody", label = _L("hit_interact_custody") },
     }
     if hitInfo.netId then
         RemoveTargetNetworkId(hitInfo.netId, options)
@@ -245,18 +384,14 @@ function ShowHitTargetMenu(identifier)
     if not hit or not hitInfo then return end
     local options = {}
     HIDE_INTERACTIONS = true
-    if not hitInfo.isDetained then
-        options[#options + 1] = { name = "detain", title = _L("hit_interact_detain"), onSelect = function() HIDE_INTERACTIONS = false; HitInteract(identifier, "detain") end }
-    else
-        options[#options + 1] = { name = "drag", title = _L("hit_interact_drag"), onSelect = function() HIDE_INTERACTIONS = false; HitInteract(identifier, "drag") end }
-        options[#options + 1] = { name = "vehicle", title = _L("hit_interact_vehicle"), close = false, onSelect = function() 
-            if not VehicleInteract() then
-                return ShowNotification(_L("hit_no_vehicle"))
-            end
-            HIDE_INTERACTIONS = false
-            lib.hideContext()
-        end}
-    end
+    options[#options + 1] = { name = "carry", title = _L("hit_interact_carry"), onSelect = function() HIDE_INTERACTIONS = false; HitInteract(identifier, "carry") end }
+    options[#options + 1] = { name = "vehicle", title = _L("hit_interact_vehicle"), close = false, onSelect = function() 
+        if not VehicleInteract() then
+            return ShowNotification(_L("hit_no_vehicle"))
+        end
+        HIDE_INTERACTIONS = false
+        lib.hideContext()
+    end}
     local menuId = "hit_target_menu"
     lib.registerContext({
         id = menuId,
@@ -288,8 +423,8 @@ function CancelCurrentHit()
     end
     CurrentHit = nil
     SendNUIMessage({
-        type = "updateHit",
-        hit = CurrentHit
+        type = "setCurrentHit",
+        currentHit = CurrentHit
     })
 end
 
@@ -314,10 +449,12 @@ RegisterNetEvent("pickle_hitman:setHitState", function(identifier, data)
             source = data.source,
             netId = data.netId,
             currentVehicle = nil,
-            isDetained = false,
             dragger = data.dragger or nil,
         }
-        if LOCAL_ON_DUTY then
+        if CurrentHit and CurrentHit.id == identifier then
+            if Config.UseTarget then
+                AddTargetGlobalVehicle({{ name = "vehicle", label = _L("hit_interact_vehicle"), onSelect = function() VehicleInteract() end }})
+            end
             ShowHitTargetOptions(identifier)
         end
     elseif data.type == "removeHitTarget" then
@@ -336,296 +473,13 @@ RegisterNetEvent("pickle_hitman:setHitState", function(identifier, data)
                 ClearPedTasks(PlayerPedId())
             end
         end
+        if Config.UseTarget then
+            RemoveTargetGlobalVehicle({{ name = "vehicle" }})
+        end
         RemoveHitTargetOptions(identifier)
         HitInfo[identifier] = nil
         if CurrentHit and CurrentHit.id == identifier then
             CancelCurrentHit()
-        end
-    elseif data.type == "detainHitTarget" then
-        HitInfo[identifier].isDetained = true
-        if data.source == GetPlayerServerId(PlayerId()) then
-            if HitInfo[identifier].netId then
-                local ped = NetToPed(HitInfo[identifier].netId)
-                if not NetworkHasControlOfEntity(ped) then
-                    NetworkRequestControlOfEntity(ped)
-                    local timeout = 500
-                    while timeout > 0 and not NetworkHasControlOfEntity(ped) do
-                        Wait(100)
-                        timeout = timeout - 100
-                    end
-                end
-            end
-            SetEntityHeading(PlayerPedId(), data.heading)
-            FreezeEntityPosition(PlayerPedId(), true)
-            PlayAnim(PlayerPedId(), "mp_arrest_paired", "cop_p2_back_left", 8.0, -8.0, 5500, 33, 0, false, false, false)
-            SetTimeout(5000, function()
-                FreezeEntityPosition(PlayerPedId(), false)
-                ShowNotification(_L("hit_detained"))
-            end)
-        end
-        if HitInfo[identifier].netId then
-            local ped = NetToPed(HitInfo[identifier].netId)
-            if not NetworkHasControlOfEntity(ped) then
-                NetworkRequestControlOfEntity(ped)
-                local timeout = 500
-                while timeout > 0 and not NetworkHasControlOfEntity(ped) do
-                    Wait(100)
-                    timeout = timeout - 100
-                end
-            end
-            if ped then
-                ClearPedTasksImmediately(ped)
-                PlayAnim(ped, "mp_arrest_paired", "crook_p2_back_left", 8.0, -8.0, 5500, 33, 0, false, false, false)
-                SetEntityCoords(ped, data.coords.x, data.coords.y, data.coords.z + 0.5)
-                SetEntityHeading(ped, data.heading)
-
-                SetEnableHandcuffs(ped, true)
-                SetCurrentPedWeapon(ped, `WEAPON_UNARMED`, true) -- unarm player
-                SetPedCanPlayGestureAnims(ped, false)
-                FreezeEntityPosition(ped, true)
-            end
-            SetTimeout(5000, function()
-                FreezeEntityPosition(ped, true)
-                SetBlockingOfNonTemporaryEvents(ped, true)
-                CreateThread(function()
-                    while ped and DoesEntityExist(ped) and HitInfo[identifier] and HitInfo[identifier].isDetained do
-                        if not IsEntityPlayingAnim(ped, "mp_arresting", "idle", 3) then
-                            ClearPedTasks(ped)
-                            PlayAnim(ped, 'mp_arresting', 'idle', 8.0, -8, -1, 49, 0, 0, 0, 0)
-                            Wait(100)
-                        end
-                        Wait(1000)
-                    end
-                end)
-            end)
-        elseif HitInfo[identifier].source == GetPlayerServerId(PlayerId()) then
-            local ped = PlayerPedId()
-            SetEntityCoords(ped, data.coords.x, data.coords.y, data.coords.z + 0.5)
-            SetEntityHeading(ped, data.heading)
-            SetEnableHandcuffs(ped, true)
-            SetCurrentPedWeapon(ped, `WEAPON_UNARMED`, true) -- unarm player
-            PlayAnim(ped, "mp_arrest_paired", "crook_p2_back_left", 8.0, -8.0, 5500, 33, 1.0, false, false, false)
-            SetTimeout(5000, function()
-                CreateThread(function()
-                    while HitInfo[identifier] and HitInfo[identifier].isDetained do
-                        local ped = PlayerPedId()
-                        if not IsEntityPlayingAnim(ped, "mp_arresting", "idle", 3) then
-                            ClearPedTasks(ped)
-                            PlayAnim(ped, 'mp_arresting', 'idle', 8.0, -8, -1, 49, 0, 0, 0, 0)
-                        end
-                        DisableControlAction(0, 22, true) 
-                        DisableControlAction(0, 23, true) 
-                        DisableControlAction(0, 24, true)
-                        DisableControlAction(0, 25, true) 
-                        DisableControlAction(0, 30, true) 
-                        DisableControlAction(0, 31, true) 
-                        DisableControlAction(0, 32, true) 
-                        DisableControlAction(0, 34, true) 
-                        DisableControlAction(0, 36, true) 
-                        DisableControlAction(0, 44, true) 
-                        DisableControlAction(0, 45, true) 
-                        DisableControlAction(0, 47, true) 
-                        DisableControlAction(0, 75, true)  
-                        DisableControlAction(0, 140, true) 
-                        DisableControlAction(0, 141, true) 
-                        DisableControlAction(0, 142, true) 
-                        DisableControlAction(0, 143, true) 
-                        DisableControlAction(0, 257, true) 
-                        DisableControlAction(0, 263, true) 
-                        DisableControlAction(0, 264, true) 
-                        DisableControlAction(0, 289, true) 
-                        Wait(0)
-                    end
-                    ClearPedTasksImmediately(PlayerPedId())
-                    SetEnableHandcuffs(PlayerPedId(), false)
-                end)
-            end)
-        end
-        if LOCAL_ON_DUTY then
-            ShowHitTargetOptions(identifier)
-        end
-    elseif data.type == "dragHitTarget" then
-        HitInfo[identifier].dragger = data.source
-        local playerPed = PlayerPedId()
-        local serverId = GetPlayerServerId(PlayerId())
-        if data.source == serverId then
-            if HitInfo[identifier].netId then
-                local ped = NetToPed(HitInfo[identifier].netId)
-                if not NetworkHasControlOfEntity(ped) then
-                    NetworkRequestControlOfEntity(ped)
-                    local timeout = 500
-                    while timeout > 0 and not NetworkHasControlOfEntity(ped) do
-                        Wait(100)
-                        timeout = timeout - 100
-                    end
-                end
-                if ped and NetworkHasControlOfEntity(ped) then
-                    CreateThread(function()
-                        local sourcePed = PlayerPedId()
-                        local boneIndex = GetPedBoneIndex(sourcePed, 0x60F2)
-                        local coords, rot = vector3(-0.25, 0.24, -0.5), vector3(0.0, 90.0, 0.0)
-                        AttachEntityToEntity(ped, sourcePed, boneIndex, coords.x, coords.y, coords.z, rot.x, rot.y, rot.z, 0, 0, 0, 1, 2, 1)
-                        local moving = false
-                        while ped and DoesEntityExist(ped) and HitInfo[identifier] and HitInfo[identifier].dragger and HitInfo[identifier].dragger == serverId do
-                            sourcePed = PlayerPedId()
-                            if IsPedWalking(sourcePed) then
-                                if not IsEntityPlayingAnim(ped, 'move_action@generic@core', 'walk', 3) then 
-                                    moving = true
-                                    PlayAnim(ped, 'move_action@generic@core', 'walk', 8.0, -8.0, -1, 1, 0, false, false, false)
-                                end
-                            elseif IsPedSprinting(sourcePed) or IsPedRunning(sourcePed) then
-                                if not IsEntityPlayingAnim(ped, 'move_action@generic@core', 'run', 3) then 
-                                    moving = true
-                                    PlayAnim(ped, 'move_action@generic@core', 'run', 8.0, -8.0, -1, 1, 0, false, false, false)
-                                end
-                            elseif moving then
-                                moving = false
-                                ClearPedTasks(ped)
-                                PlayAnim(ped, 'mp_arresting', 'idle', 8.0, -8, -1, 49, 0, 0, 0, 0)
-                            end
-                            Wait(0)
-                        end
-                    end)
-                end
-            end
-            CreateThread(function()
-                local animLoop = true
-                local hit = HitRegistry[identifier]
-                HIDE_INTERACTIONS = true
-                while HitRegistry[identifier] and HitInfo[identifier] and HitInfo[identifier].dragger and HitInfo[identifier].dragger == serverId  do
-                    local playerPed = PlayerPedId()
-                    local playerCoords = GetEntityCoords(playerPed)
-                    if animLoop and not IsEntityPlayingAnim(playerPed, 'missfbi4prepp1', 'idle', 3) then 
-                        PlayAnim(playerPed, 'missfbi4prepp1', 'idle', 8.0, -8.0, -1, 49, 0, false, false, false)
-                        animLoop = false
-                        SetTimeout(1000, function()
-                            animLoop = true
-                        end)
-                    end
-                    ShowInteractText("[E] - " .. _L("stop_dragging"))
-                    if IsControlJustPressed(0, 51) then
-                        HitInteract(identifier, "stopDragging")
-                        break
-                    end
-                    Wait(0)
-                end
-                HIDE_INTERACTIONS = false
-            end)
-        end
-        if HitInfo[identifier].source == serverId then
-            CreateThread(function()
-                local ped = PlayerPedId()
-                local sourcePed = GetPlayerPed(GetPlayerFromServerId(data.source))
-                local boneIndex = GetPedBoneIndex(sourcePed, 0x60F2)
-                local coords, rot = vector3(-0.25, 0.24, -0.5), vector3(0.0, 90.0, 0.0)
-                AttachEntityToEntity(ped, sourcePed, boneIndex, coords.x, coords.y, coords.z, rot.x, rot.y, rot.z, 0, 0, 0, 1, 2, 1)
-                local moving = false
-                while HitInfo[identifier] and HitInfo[identifier].dragger and HitInfo[identifier].dragger == data.source do
-                    sourcePed = GetPlayerPed(GetPlayerFromServerId(data.source))
-                    ped = PlayerPedId()
-                    if IsPedWalking(sourcePed) then
-                        if not IsEntityPlayingAnim(ped, 'move_action@generic@core', 'walk', 3) then 
-                            moving = true
-                            PlayAnim(ped, 'move_action@generic@core', 'walk', 8.0, -8.0, -1, 1, 0, false, false, false)
-                        end
-                    elseif IsPedSprinting(sourcePed) or IsPedRunning(sourcePed) then
-                        if not IsEntityPlayingAnim(ped, 'move_action@generic@core', 'run', 3) then 
-                            moving = true
-                            PlayAnim(ped, 'move_action@generic@core', 'run', 8.0, -8.0, -1, 1, 0, false, false, false)
-                        end
-                    elseif moving then
-                        moving = false
-                        ClearPedTasks(ped)
-                        PlayAnim(ped, 'mp_arresting', 'idle', 8.0, -8, -1, 49, 0, 0, 0, 0)
-                    end
-                    Wait(0)
-                end
-                ClearPedTasksImmediately(PlayerPedId())
-            end)
-        end
-    elseif data.type == "releaseHitTarget" then
-        HitInfo[identifier].dragger = nil
-        local playerPed = PlayerPedId()
-        local serverId = GetPlayerServerId(PlayerId())
-        if data.source == serverId then
-            if HitInfo[identifier].netId then
-                local ped = NetToPed(HitInfo[identifier].netId)
-                if not NetworkHasControlOfEntity(ped) then
-                    NetworkRequestControlOfEntity(ped)
-                    local timeout = 500
-                    while timeout > 0 and not NetworkHasControlOfEntity(ped) do
-                        Wait(100)
-                        timeout = timeout - 100
-                    end
-                end
-                if ped and NetworkHasControlOfEntity(ped) then
-                    DetachEntity(ped, true, true)
-                    ClearPedTasks(ped)
-                    FreezeEntityPosition(ped, true)
-                end
-            end
-            ClearPedTasks(playerPed)
-        end
-        if HitInfo[identifier].source == serverId then
-            local ped = PlayerPedId()
-            ClearPedTasks(ped)
-            DetachEntity(ped, true, true)
-        end
-    elseif data.type == "putHitInVehicle" then
-        local playerPed = PlayerPedId()
-        local serverId = GetPlayerServerId(PlayerId())
-        if data.source == serverId then
-            if HitInfo[identifier].netId then
-                local ped = NetToPed(HitInfo[identifier].netId)
-                if not NetworkHasControlOfEntity(ped) then
-                    NetworkRequestControlOfEntity(ped)
-                    local timeout = 500
-                    while timeout > 0 and not NetworkHasControlOfEntity(ped) do
-                        Wait(100)
-                        timeout = timeout - 100
-                    end
-                end
-                if ped and NetworkHasControlOfEntity(ped) then
-                    local vehicle = NetToVeh(data.currentVehicle)
-                    if vehicle then
-                        FreezeEntityPosition(ped, false)
-                        TaskWarpPedIntoVehicle(ped, vehicle, 2)
-                    end
-                end
-            end
-        end
-        if HitInfo[identifier].source == serverId then
-            local ped = PlayerPedId()
-            local vehicle = NetToVeh(data.currentVehicle)
-            if vehicle then
-                FreezeEntityPosition(ped, false)
-                TaskWarpPedIntoVehicle(ped, vehicle, 2)
-            end
-        end
-    elseif data.type == "removeHitFromVehicle" then
-        local playerPed = PlayerPedId()
-        local serverId = GetPlayerServerId(PlayerId())
-        if data.source == serverId then
-            if HitInfo[identifier].netId then
-                local ped = NetToPed(HitInfo[identifier].netId)
-                if not NetworkHasControlOfEntity(ped) then
-                    NetworkRequestControlOfEntity(ped)
-                    local timeout = 500
-                    while timeout > 0 and not NetworkHasControlOfEntity(ped) do
-                        Wait(100)
-                        timeout = timeout - 100
-                    end
-                end
-                if ped then
-                    ClearPedTasks(ped)
-                    TaskLeaveVehicle(ped, NetToVeh(data.currentVehicle), 16)
-                end
-            end
-        end
-        if HitInfo[identifier].source == serverId then
-            local ped = PlayerPedId()
-            ClearPedTasksImmediately(ped)
-            TaskLeaveVehicle(ped, NetToVeh(data.currentVehicle), 16)
         end
     end
 end)
@@ -641,7 +495,11 @@ RegisterNetEvent("pickle_hitman:acceptHit", function(target)
         reward = hit.reward,
         description = hit.description,
         date = hit.datetime or 0,
+        objective = _L("hit_objective_find_target"),
+        requestConfirmation = false,
+        confirmedTarget = false,
     }
+    ShowNotification(CurrentHit.objective)
     SendNUIMessage({
         type = "setCurrentHit",
         currentHit = CurrentHit
@@ -705,107 +563,41 @@ RegisterNetEvent("pickle_hitman:acceptHit", function(target)
     end
 end)
 
-RegisterNetEvent("pickle_hitman:dutyState", function(state)
-    if LOCAL_ON_DUTY == state then return end
-    LOCAL_ON_DUTY = state
-    RenderDutyLocations()
-    UpdatePermissions(LOCAL_PERMISSIONS)
-    if not LOCAL_ON_DUTY then 
-        ToggleOutfit(false)
-        for k,v in pairs(HitInfo) do 
-            RemoveHitTargetOptions(k)
-        end
-        if Config.UseTarget then
-            RemoveTargetGlobalVehicle({{ name = "vehicle" }})
-        end
-        return
-    else
-        ToggleOutfit(true)
-        for k,v in pairs(HitInfo) do 
-            ShowHitTargetOptions(k)
-        end
-        if Config.UseTarget then
-            AddTargetGlobalVehicle({{ name = "vehicle", label = _L("hit_interact_vehicle"), onSelect = function() VehicleInteract() end }})
-        end
-    end
-    CreateThread(function()
-        local inVehicle = false
-        local brakeTime = -1
-        local showInteract = false
-        while LOCAL_ON_DUTY do
-            local wait = 1000
-            if displayingText or (not inVehicle and IsPedInAnyVehicle(PlayerPedId(), false)) then
-                inVehicle = true
-            elseif inVehicle then
-                local vehicle = GetVehiclePedIsIn(PlayerPedId(), false)
-                if not DoesEntityExist(vehicle) then
-                    inVehicle = false
-                    displayingText = false
-                    brakeTime = -1
-                else
-                    wait = 0
-                    if GetEntitySpeed(vehicle) < 1.0 and IsControlPressed(0, 22) then
-                        brakeTime = brakeTime + 1
-                    elseif brakeTime > 0 or brakeTime == -1 then
-                        if brakeTime < 20 and brakeTime > 0 then
-                            ExecuteCommand("hits")
-                        elseif brakeTime == -1 then
-                            showInteract = true
-                            SetTimeout(3000, function()
-                                showInteract = false
-                            end)
-                        end
-                        brakeTime = 0
-                    end
-                end
-                if showInteract then
-                    wait = 0
-                    ShowInteractText(_L("hit_vehicle_info"))
-                end
-            end
-            Wait(wait)
-        end
-    end)
-end)
-
 RegisterNetEvent("pickle_hitman:refreshHitPosition", function(data)
     local coords = data.coords
     if CurrentHit and CurrentHit.id == data.id then
-        if HitInfo[data.id] and HitInfo[data.id].isDetained then
-            if CurrentHit.targetBlip or CurrentHit.targetRadius then
-                RemoveBlip(CurrentHit.targetBlip)
-                RemoveBlip(CurrentHit.targetRadius)
-                CurrentHit.targetBlip = nil
-                CurrentHit.targetRadius = nil
-            end
+        local blipCfg = Config.PlayerHits.blip
+        local rngOffset = {1, 100}
+        local rngScale = (math.random(rngOffset[1], rngOffset[2]) / rngOffset[2]) * (blipCfg.radius.size / 2)
+        local rngCoords = coords + vector3(
+            (math.random(1, 2) == 1 and 1 or -1) * rngScale,
+            (math.random(1, 2) == 1 and 1 or -1) * rngScale,
+            0
+        )
+        if CurrentHit.targetBlip and CurrentHit.targetRadius then
+            SetBlipCoords(CurrentHit.targetBlip, rngCoords)
+            SetBlipCoords(CurrentHit.targetRadius, rngCoords)
         else
-            local blipCfg = Config.PlayerHits.blip
-            local rngOffset = {1, 100}
-            local rngScale = (math.random(rngOffset[1], rngOffset[2]) / rngOffset[2]) * (blipCfg.radius.size / 2)
-            local rngCoords = coords + vector3(
-                (math.random(1, 2) == 1 and 1 or -1) * rngScale,
-                (math.random(1, 2) == 1 and 1 or -1) * rngScale,
-                0
-            )
-            if CurrentHit.targetBlip and CurrentHit.targetRadius then
-                SetBlipCoords(CurrentHit.targetBlip, rngCoords)
-                SetBlipCoords(CurrentHit.targetRadius, rngCoords)
-            else
-                RemoveBlip(CurrentHit.targetBlip)
-                RemoveBlip(CurrentHit.targetRadius)
-                local targetBlip, targetRadius = CreateBlip({
-                    coords = rngCoords,
-                    label = blipCfg.labelPrefix .." ".. CurrentHit.name,
-                    category = 1,
-                    sprite = blipCfg.sprite,
-                    color = blipCfg.color,
-                    scale = blipCfg.scale,
-                    radius = blipCfg.radius,
-                })
-                CurrentHit.targetBlip = targetBlip
-                CurrentHit.targetRadius = targetRadius
-            end
+            RemoveBlip(CurrentHit.targetBlip)
+            RemoveBlip(CurrentHit.targetRadius)
+            local targetBlip, targetRadius = CreateBlip({
+                coords = rngCoords,
+                label = blipCfg.labelPrefix .." ".. CurrentHit.name,
+                category = 1,
+                sprite = blipCfg.sprite,
+                color = blipCfg.color,
+                scale = blipCfg.scale,
+                radius = blipCfg.radius,
+            })
+            CurrentHit.targetBlip = targetBlip
+            CurrentHit.targetRadius = targetRadius
         end
+    end
+end)
+
+RegisterNetEvent("pickle_hitman:onTargetDeath", function(identifier)
+    if CurrentHit and CurrentHit.id == identifier then
+        OnHitDeath()
     end
 end)
 
@@ -829,12 +621,18 @@ RegisterNUICallback("declineHit", function(data, cb)
     cb(true)
 end)
 
-RegisterNUICallback("cancelCurrentHit", function(data, cb)
-    SendNUIMessage({
-        type = "updateHit",
-        hit = CurrentHit
-    })
+RegisterNUICallback("cancelContract", function(data, cb)
+    SetNuiFocus(false, false)
     TriggerServerEvent("pickle_hitman:cancelCurrentHit")
+    cb(true)
+end)
+
+RegisterNUICallback("useCamera", function(data, cb)     
+    SetNuiFocus(false, false)   
+    if not CurrentHit then return end
+    if CurrentHit.npc then
+        CameraLoop({trackType = "ped", netId = CurrentHit.targetNPC and PedToNet(CurrentHit.targetNPC) or -1})
+    end
     cb(true)
 end)
 
@@ -901,11 +699,6 @@ CreateThread(function()
                 end
             end
         end
-        AddTargetGlobalPlayer({
-            { name = "detain", label = _L("hit_interact_detain"), interactCheck = function(...) return canInteract("detain", ...) end, onSelected = function(...) onSelect("detain", ...) end },
-            { name = "drag", label = _L("hit_interact_drag"), interactCheck = function(...) return canInteract("drag", ...) end, onSelected = function(...) onSelect("drag", ...) end },
-            { name = "custody", label = _L("hit_interact_custody"), interactCheck = function(...) return canInteract("custody", ...) end, onSelected = function(...) onSelect("custody", ...) end }        
-        })
     end
     local modifiers = {
         ["weapon_stungun"] = {},
@@ -920,7 +713,7 @@ end)
 local hitInteract = {holding = false, ticks = 0}
 
 RegisterCommand("+openHitInteraction", function() 
-    if not CurrentHit then return end
+    if not CurrentHit or usingCamera then return end
     hitInteract.holding = true
     CreateThread(function()
         while hitInteract.holding do
@@ -928,7 +721,7 @@ RegisterCommand("+openHitInteraction", function()
                 hitInteract.ticks = 0
             else
                 hitInteract.ticks = hitInteract.ticks + 1
-                if hitInteract.ticks > 50 then
+                if hitInteract.ticks > 25 then
                     SendNUIMessage({
                         type = "setInteracting",
                         data = true

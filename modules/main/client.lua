@@ -29,6 +29,15 @@ function UpdatePermissions(permissions)
     })
 end
 
+function GetConfigPosition()
+    local kvpValue = GetResourceKvpString('pickle_hitman:position')
+    if kvpValue == nil or kvpValue == "" then
+        return Config.DefaultPosition
+    else
+        return json.decode(kvpValue)
+    end 
+end
+
 RegisterNetEvent("pickle_hitman:onRestart", function()
     TriggerServerEvent("pickle_hitman:initializePlayer")
 end)
@@ -47,10 +56,16 @@ RegisterNetEvent("pickle_hitman:resyncPermissions", function(permissions)
     UpdatePermissions(permissions)
 end)
 
+RegisterNUICallback("updatePosition", function(data, cb)
+    SetResourceKvp("pickle_hitman:position", json.encode(data))
+    cb(true)
+end)
+
 RegisterNUICallback("requestConfig", function(data, cb)
     cb({
         type = "setConfig",
         locale = Language[Config.Language],
+        position = GetConfigPosition(),
         currency = {
             name = "USD",
             locale = "en-US"

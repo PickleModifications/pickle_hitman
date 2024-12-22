@@ -48,6 +48,10 @@ function RemoveHitFromRegistry(target, ignoreSync, deleteSQL, source)
         dprint("Hit does not exist for target: " .. target)
         return
     end
+    print(HitRegistry[target].npc)
+    if HitRegistry[target].npc then
+        GenerateNPCHit(false)
+    end
     HitRegistry[target] = nil
     HitInfo[target] = nil
     if source then
@@ -126,13 +130,16 @@ function CancelHit(target, remove)
     local hit = HitRegistry[target]
     if remove then
         RemoveHitFromRegistry(target, false, true)
-        if hit.npc then
-            GenerateNPCHit(false)
-        end
     else
+        hit.hitmanId = nil
         UpdateHit(target, hit)
     end
     HitInfo[target] = nil
+    for k,v in pairs(HitmanPlayers) do
+        if v.target == target then
+            HitmanPlayers[k] = nil
+        end
+    end
     TriggerClientEvent("pickle_hitman:setHitState", -1, target, {
         type = "removeHitTarget"
     })
@@ -147,6 +154,7 @@ function CompleteHit(identifier, source)
     local reward = hit.reward
     AddMoney(source, math.floor(reward))
     ShowNotification(source, _L("hit_reward_self", NumberWithCommas(reward)))
+    HitmanPlayers[source] = nil
     RemoveHitFromRegistry(identifier, false, true, source)
 end
 
@@ -381,46 +389,15 @@ RegisterNetEvent("pickle_hitman:addPlayerToHit", function(data)
     ShowNotification(source, _L("hit_place_title"))
 end)
 
-RegisterNetEvent("pickle_hitman:takeCustody", function(identifier) 
-    local source = source
-    local permissions = GetPlayerPermissions(source)
-    local hit = HitRegistry[identifier]
-    local hitInfo = HitInfo[identifier]
-    if not hit or not hitInfo then return ShowNotification(source, _L("hit_not_exist")) end
-    if hit.npc then return ShowNotification(source, _L("hit_npc")) end
-    if not hitInfo.isDetained then return ShowNotification(source, _L("hit_needs_detained")) end
-    ShowNotification(source, _L("hit_released"))
-    CompleteHit(identifier, source, false, true)
-end)
-
-RegisterNetEvent("pickle_hitman:toggleDuty", function()
-    local source = source
-    local permissions = GetPlayerPermissions(source)
-    if HitmanPlayers[source] then
-        local currentHitId, currentHit = GetPlayerCurrentHit(source)
-        if currentHit then
-            CancelHit(currentHitId)
-        end
-        HitmanPlayers[source] = nil
-        ShowNotification(source, _L("hithunter_off"))
-        for i=1, #Config.HitmanPlayers.loadout do
-            Inventory.RemoveItem(source, Config.HitmanPlayers.loadout[i].name, Config.HitmanPlayers.loadout[i].count or 1)
-        end
+RegisterNetEvent("pickle_hitman:completeHit", function()
+    local currentHit = GetPlayerCurrentHit(source)
+    if not currentHit then return ShowNotification(source, _L("no_current_hit")) end
+    if not HitInfo[currentHit] then return end
+    if HitInfo[currentHit].deceased then
+        CompleteHit(currentHit, source)
     else
-        HitmanPlayers[source] = {
-            name = GetPlayerCharacterName(source),
-            clockedIn = os.time(),
-        }
-        ShowNotification(source, _L("hithunter_on"))
-        for i=1, #Config.HitmanPlayers.loadout do
-            local count = Inventory.GetItemCount(source, Config.HitmanPlayers.loadout[i].name)
-            local giveCount = Config.HitmanPlayers.loadout[i].count or 1
-            if count < giveCount then
-                Inventory.AddItem(source, Config.HitmanPlayers.loadout[i].name, giveCount - count)
-            end
-        end
+        ShowNotification(source, _L("hit_interact_must_dead"))
     end
-    TriggerClientEvent("pickle_hitman:dutyState", source, HitmanPlayers[source])
 end)
 
 CreateThread(function()
@@ -438,7 +415,7 @@ CreateThread(function()
                     local health = GetEntityHealth(entity)
                     if health <= 0 then
                         v.deceased = true
-                        ShowNotification(hitman, _L("hit_target_killed"))
+                        TriggerClientEvent("pickle_hitman:onTargetDeath", hitman, k)
                     end
                 end
             end

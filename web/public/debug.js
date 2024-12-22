@@ -24,6 +24,11 @@ const DEBUG_LOCALE = {
     "current_hit_camera": "Use Camera",
     "current_hit_return": "Return to Game",
     "current_hit_cancel": "Cancel Contract",
+    "camera_state_idle_1": "Hold",
+    "camera_state_idle_2": "to scan the target.",
+    "camera_state_scanning": "Scanning...",
+    "camera_state_match": "TARGET CONFIRMED",
+    "camera_state_no_match": "NO MATCH DETECTED",
 }
 
 function DebugSendConfig() {
@@ -104,6 +109,27 @@ function DebugCurrentHit() {
     }, '*');
 }
 
+function DebugSendCameraState() {
+    let state = "no_match"
+    setInterval(() => {
+        if (state === "idle") {
+            state = "scanning";
+        } else if (state === "scanning") {
+            state = "match";
+        } else if (state === "match") {
+            state = "no_match";
+        } else if (state === "no_match") {
+            state = null;
+        } else if (state === null) {
+            state = "idle";
+        }
+        window.postMessage({
+            type: 'setCameraState',
+            cameraState: state
+        }, '*');
+    }, 1000);
+}
+
 document.addEventListener('DOMContentLoaded', (event) => {
     fetch('https://pickle_hitman/requestConfig', {
         method: 'POST',
@@ -119,11 +145,12 @@ document.addEventListener('DOMContentLoaded', (event) => {
     });
     // setTimeout(() => {
     //     DebugSendConfig();
-    //     setTimeout(() => {
-    //         DebugSendSections()
-    //     }, 100);
-    //     setTimeout(() => {
-    //         DebugCurrentHit();
-    //     }, 100);
+    //     DebugSendCameraState();
+    //     // setTimeout(() => {
+    //     //     DebugSendSections()
+    //     // }, 100);
+    //     // setTimeout(() => {
+    //     //     DebugCurrentHit();
+    //     // }, 100);
     // }, 1000);
 });

@@ -8,7 +8,7 @@ Config.RenderDistance = 20.0 -- Scenario display Radius.
 
 Config.InteractDistance = 1.5 -- Interact Radius
 
-Config.UseTarget = true -- When set to true, it'll use targeting instead of key-presses to interact.
+Config.UseTarget = false -- When set to true, it'll use targeting instead of key-presses to interact.
 
 Config.NoModelTargeting = true -- When set to true and using Target, it'll spawn a small invisible prop so you can third-eye when no entity is defined.
 
@@ -29,7 +29,16 @@ Config.PhoneboxModels = {
 
 Config.PhoneboxLocations = {
     -- Not needed, but if you want to set the coords for a phonebox somewhere, you can add it here.
-    { coords = vector3(0.0, 0.0, 0.0), heading = 0.0 },
+    -- { coords = vector3(0.0, 0.0, 0.0), heading = 0.0 },
+}
+
+Config.Burial = {
+    blip = {
+        enabled = false,
+    },
+    locations = {
+        { coords = vector3(-132.5433, -806.3687, 31.9111), heading = 78.0663 },
+    },
 }
 
 Config.HitPermissions = {
@@ -75,6 +84,8 @@ Config.HitPermissions = {
         end
     end,
 }
+
+Config.DefaultPosition = {x = 1510, y = 10} -- Default position for the Overlay UI.
 
 Config.PlayerHits = {
     blip = {

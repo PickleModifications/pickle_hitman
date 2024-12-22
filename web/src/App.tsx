@@ -10,6 +10,7 @@ import { fetchNui } from './providers/nui/fetchNui';
 import BackgroundImageFile from './assets/background.png';
 import { useEffect, useRef } from 'react';
 import { Currency } from './providers/currency/Currency';
+import { CSSProperties } from 'react';
 
 type AppSection = {
   name: string;
@@ -29,6 +30,14 @@ export type CurrentHit = {
 export type Position = {
   x: number;
   y: number;
+}
+
+export type CameraState = "idle" | "scanning" | "match" | "no_match"
+
+export function KeyboardIcon({text, style} : {text: string, style?: CSSProperties}) {
+  return (
+    <Flex align={'center'} style={{background: "white", color:"black", fontWeight: 700, fontSize: "12px", borderRadius: 2, padding: "0px 10px", height: "18px", margin: "0px 5px", ...style}}>{text}</Flex>
+  );
 }
 
 function HitContent({section} : {section: string}) {
@@ -129,6 +138,7 @@ function OverlayApp() {
   const [interacting, setInteracting] = useState(false)
   const [currentHit, setCurrentHit] = useState<CurrentHit | null>(null)
   const [position, setPosition] = useState<Position>(config.position || {x: 10, y: 10})
+  useEffect(() => { setPosition(config.position) }, [config.position])
   const theme = useMantineTheme()
   const translate = useLocale()
   useNuiEvent("setCurrentHit", function(data) {
@@ -203,7 +213,7 @@ function OverlayApp() {
   }, []);
 
   return (
-    <div ref={overlayRef} style={{ userSelect: "none", position: "absolute", width: "400px", top: position.y + "px", left: position.x + "px", transition: "opacity 0.2s", opacity: (show ? 1.0 : 0.0), display: (currentHit ? "flex" : "none"), cursor: "move" }}>
+    <div ref={overlayRef} style={{ userSelect: "none", position: "absolute", width: "400px", zIndex: "1000", top: position.y + "px", left: position.x + "px", transition: "opacity 0.2s", opacity: (show ? 1.0 : 0.0), display: (currentHit ? "flex" : "none"), cursor: "move" }}>
       {(currentHit) &&
         <Flex w={"100%"} h={"100%"} p={8} gap={8} direction={"column"} style={{ borderRadius: 5, backgroundColor: "rgba(0, 0, 0, 0.75)" }} >
           <Flex gap={8} align={"center"}>
@@ -227,15 +237,15 @@ function OverlayApp() {
                 <Text size="15px" fw={600}>{translate("current_hit_reward")}:</Text>
                 <Text size="15px" style={{color: theme.colors.dark[2]}}>{Currency(currentHit.reward, config)}</Text>
               </Flex>
-              <Flex gap={8} direction={"column"}>
-                <Text size='15px' fw={600}>{translate("current_hit_description")}:</Text>
-                <Text size='15px' style={{color: theme.colors.dark[2]}}>{currentHit.description || "No description"}</Text>
-              </Flex>
+              <span><span style={{fontWeight: 600, fontSize: "15px"}}>{translate("current_hit_description")}:</span> <span style={{fontSize: "15px", color: theme.colors.dark[2]}}>{currentHit.description || "No description"}</span></span>
             </Flex>
           </Flex>
+          <span><span style={{fontWeight: 600, fontSize: "15px"}}>{translate("current_hit_objective")}:</span> <span style={{fontSize: "15px", color: theme.colors.dark[2]}}>{currentHit.objective || "No objective."}</span></span>
+
           {interacting ? (
             <>
               <Button color={"dark.4"} style={{marginTop: "auto"}} onClick={() => {
+                setInteracting(false)
                 fetchNui("useCamera", {})
               }}>{translate("current_hit_camera")}</Button>
               <Button color={"dark.4"} style={{marginTop: "auto"}} onClick={() => {
@@ -243,16 +253,62 @@ function OverlayApp() {
                 fetchNui("returnToGame", {})
               }}>{translate("current_hit_return")}</Button>
               <Button color="red" style={{marginTop: "auto"}} onClick={() => {
+                setInteracting(false)
                 fetchNui("cancelContract", {})
               }}>{translate("current_hit_cancel")}</Button>
             </>
           ) : (
-            <Flex align={"center"}>{translate("current_hit_interact_1")} <Flex align={'center'} style={{background: "white", color:"black", fontWeight: 700, fontSize: "12px", borderRadius: 2, padding: "0px 10px", height: "18px", margin: "0px 5px"}}>SHIFT</Flex> {translate("current_hit_interact_2")}</Flex>
+            <Flex align={"center"}>{translate("current_hit_interact_1")} <KeyboardIcon text={"SHIFT"}/> {translate("current_hit_interact_2")}</Flex>
           )}
         </Flex>
       }
     </div>
   );
+}
+
+function CameraApp() {
+  const [show, setShow] = useState(false)
+  const translate = useLocale()
+  const [cameraState, setCameraState] = useState<CameraState | null>(null);
+  let cameraStateSettings = {
+    "idle": {content: (
+      <Flex className={"outlined"} style={{fontSize: "30px", fontWeight: 700}} align={"center"}>{translate("camera_state_idle_1")} <KeyboardIcon style={{margin: "0 15px", padding: "15px 15px", fontSize: "20px", textShadow: "none"}} text={"SPACEBAR"}/> {translate("camera_state_idle_2")}</Flex>
+    ) },
+    "scanning": {content: (
+      <Flex className={"outlined"} c={"yellow.4"} style={{fontSize: "30px", fontWeight: 700}} align={"center"}>{translate("camera_state_scanning")}</Flex>
+    ) },
+    "match": {content: (
+      <Flex className={"outlined"} c={"green.4"} style={{fontSize: "30px", fontWeight: 700}} align={"center"}>{translate("camera_state_match")}</Flex>
+    ) },
+    "no_match": {content: (
+      <Flex className={"outlined"} c={"red.4"} style={{fontSize: "30px", fontWeight: 700}} align={"center"}>{translate("camera_state_no_match")}</Flex>
+    ) },
+  }
+  useNuiEvent("setCameraState", function(data) {
+    if (data.cameraState) {
+      setCameraState(data.cameraState)
+      setTimeout(() => {
+        setShow(true)
+      }, 10)
+    }
+    else {
+      setShow(false)
+      setTimeout(() => {
+        setCameraState(null)
+      }, 200)
+    }
+  })
+  return (
+    (cameraState) && (
+      <div style={{ backgroundImage: 'url("./images/camera_overlay.png")', overflow: "hidden", position: "absolute", top: "50%", left: "50%", width: "1920px", height: "1080px", transform: "translate(-50%, -50%)", transition: "opacity 0.2s", opacity: (show ? 1.0 : 0), }}>
+        <div style={{position: "absolute", bottom: "-275px", left: "50%", transform: "translate(-50%, 0)", transition: "opacity 0.2s", opacity: 1.0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: "100%"}}>
+          {(cameraState && cameraStateSettings[cameraState]) && (
+            cameraStateSettings[cameraState].content
+          )}
+        </div>
+      </div>
+    )
+  )
 }
 
 function App() {
@@ -266,6 +322,7 @@ function App() {
       <HitmanAppProvider>
         <HitApp/>
         <OverlayApp/>
+        <CameraApp/>
       </HitmanAppProvider>
       </ConfigProvider>
     </MantineProvider>
