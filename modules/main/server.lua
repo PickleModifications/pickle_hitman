@@ -58,7 +58,7 @@ end)
 
 RegisterCallback("pickle_hitman:getPermissions", function(source, cb, extraQueries)
     local permissions = GetPlayerPermissions(source)
-    cb(permissions, GetExtraQueries(source, extraQueries))
+    cb(permissions, extraQueries and GetExtraQueries(source, extraQueries) or nil)
 end)
 
 RegisterNetEvent("pickle_hitman:initializePlayer", function()
@@ -73,6 +73,19 @@ RegisterNetEvent("pickle_hitman:initializePlayer", function()
         hits = HitRegistry,
         permissions = GetPlayerPermissions(source),
     })
+end)
+
+RegisterNetEvent("pickle_hitman:playerDied", function()
+    local identifier = GetIdentifier(source)
+    local hitInfo = HitInfo[identifier]
+    if hitInfo then
+        hitInfo.deceased = true
+        for k,v in pairs(HitmanPlayers) do
+            if v.target == identifier then
+                TriggerClientEvent("pickle_hitman:onTargetDeath", k, identifier)
+            end
+        end
+    end
 end)
 
 AddEventHandler("onResourceStart", function(name)

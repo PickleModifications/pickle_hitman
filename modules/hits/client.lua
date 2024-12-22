@@ -9,6 +9,7 @@ function HitsToArray(hits)
     for k, v in pairs(hits) do
         table.insert(hitsArray, {
             id = v.target,
+            source = v.source,
             hitmanId = v.hitmanId,
             image = v.image,
             description = v.description,
@@ -70,23 +71,12 @@ function StartHitBurialMission()
             if Config.Burial.blip.enabled then
                 newLocation.blip = CreateBlip(Config.Burial.blip)
             end
-            newLocation.interact = CreateInteraction({
-                label = _L("hit_interact_bury_body", CurrentHit.reward),
-                coords = location.coords,
-                heading = location.heading,
-            }, function()
-                -- Bury player.
-                TriggerServerEvent("pickle_hitman:completeHit", CurrentHit.id)
-            end)
             locations[#locations + 1] = newLocation
         end
         while CurrentHit and CurrentHit.id == id do
             Wait(1000)
         end
         for i=1, #locations do 
-            if locations[i].interact then
-                DeleteInteraction(locations[i].interact)
-            end
             if locations[i].blip then
                 RemoveBlip(locations[i].blip)
             end
@@ -252,6 +242,8 @@ function RevivePed(ped)
     SetEntityHealth(ped, 200)
     SetEntityCoords(ped, coords.x, coords.y, coords.z + 0.5)
     ClearPedTasksImmediately(ped)
+    SetEntityInvincible(ped, true)
+    SetBlockingOfNonTemporaryEvents(ped, true)
 end
 
 function VehicleInteract()
@@ -279,14 +271,11 @@ function VehicleInteract()
             end)
         else
             CurrentHit.insideVehicle = vehicle
-            -- local obj = CreateProp(`prop_tennis_ball`, GetEntityCoords(vehicle), true, true)
-            -- SetEntityVisible(obj, false)
             RevivePed(CurrentHit.targetNPC)
             local boneIndex = GetEntityBoneIndexByName(vehicle, "boot")
             local boneCoords = GetWorldPositionOfEntityBone(vehicle, boneIndex)
             local offset = GetOffsetFromEntityGivenWorldCoords(vehicle, boneCoords.x, boneCoords.y, boneCoords.z)
             AttachEntityToEntity(CurrentHit.targetNPC, vehicle, 0, offset.x, offset.y, offset.z, 0.0, 0.0, 0.0, false, false, false, false, 20, true)
-            -- AttachEntityToEntity(CurrentHit.targetNPC, obj, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false, false, false, false, 20, true)
             CreateThread(function()
                 while CurrentHit and CurrentHit.insideVehicle do 
                     if not IsEntityPlayingAnim(CurrentHit.targetNPC, "timetable@floyd@cryingonbed@base", "base", 3) then
@@ -317,9 +306,12 @@ function HitInteract(identifier, interactType)
         ClearPedTasksImmediately(playerPed)
 
         CurrentHit.carrying = true
+        HIDE_INTERACTIONS = true
         CreateThread(function()
             AttachEntityToEntity(ped, playerPed, 0, 0.27, 0.15, 0.63, 0.5, 0.5, 180, false, false, false, false, 2, true)
             while CurrentHit and CurrentHit.carrying and CurrentHit.id == identifier do
+                local playerPed = PlayerPedId()
+                local coords = GetEntityCoords(playerPed)
                 if not IsEntityPlayingAnim(playerPed, "missfinale_c2mcs_1", "fin_c2_mcs_1_camman", 3) then
                     PlayAnim(playerPed, "missfinale_c2mcs_1", "fin_c2_mcs_1_camman", 8.0, -8.0, -1, 49, 0, 0, 0, 0)
                     Wait(10)
@@ -333,14 +325,30 @@ function HitInteract(identifier, interactType)
                 DisableControlAction(0, 142, true) -- Disable melee attack alternate
                 DisableControlAction(0, 75, true)  -- Disable exit vehicle
                 DisableControlAction(0, 23, true) -- Disable enter vehicle
-                
-                ShowInteractText("[E] - " .. _L("stop_carrying_body"))
-                if IsControlJustPressed(1, 51) then
-                    CurrentHit.carrying = false
-                    break
+                local nearestBurial = nil
+                for i=1, #Config.Burial.locations do 
+                    local burial = Config.Burial.locations[i]
+                    local distance = #(coords - burial.coords)
+                    if not nearestBurial or distance < nearestBurial.distance then
+                        nearestBurial = { coords = burial.coords, distance = distance }
+                    end
+                end
+                if nearestBurial and nearestBurial.distance < 2.5 then
+                    ShowInteractText("[E] - " .. _L("hit_interact_bury_body", NumberWithCommas(CurrentHit.reward)))
+                    if IsControlJustPressed(1, 51) then
+                        TriggerServerEvent("pickle_hitman:completeHit", identifier)
+                        break
+                    end
+                else
+                    ShowInteractText("[E] - " .. _L("stop_carrying_body"))
+                    if IsControlJustPressed(1, 51) then
+                        CurrentHit.carrying = false
+                        break
+                    end
                 end
                 Wait(0)
             end
+            HIDE_INTERACTIONS = false
             ClearPedTasks(playerPed)
             ClearPedTasks(ped)
             DetachEntity(ped, true, true)
@@ -607,6 +615,7 @@ RegisterNUICallback("addPlayerToHit", function(data, cb)
         identifier = data.player.identifier, 
         image = data.player.image, 
         reward = data.player.reward, 
+        description = data.player.description,
     })
     cb(true)
 end)
@@ -632,6 +641,8 @@ RegisterNUICallback("useCamera", function(data, cb)
     if not CurrentHit then return end
     if CurrentHit.npc then
         CameraLoop({trackType = "ped", netId = CurrentHit.targetNPC and PedToNet(CurrentHit.targetNPC) or -1})
+    else
+        CameraLoop({trackType = "player", serverId = HitInfo[CurrentHit.id].source})
     end
     cb(true)
 end)
@@ -711,13 +722,22 @@ CreateThread(function()
 end)
 
 local hitInteract = {holding = false, ticks = 0}
+local lastCoords
+
+function GetActualEntitySpeed(entity)
+    local newCoords = GetEntityCoords(entity)
+    local speed = #(newCoords - (lastCoords or newCoords)) * 10
+    lastCoords = newCoords
+    return speed
+end
 
 RegisterCommand("+openHitInteraction", function() 
     if not CurrentHit or usingCamera then return end
     hitInteract.holding = true
+    hitInteract.ticks = 0
     CreateThread(function()
         while hitInteract.holding do
-            if GetEntitySpeed(PlayerPedId()) > 0.5 then
+            if GetActualEntitySpeed(PlayerPedId()) > 0.01 or IsPlayerClimbing(PlayerId()) or IsPedJumping(PlayerPedId()) or IsPedFalling(PlayerPedId()) then
                 hitInteract.ticks = 0
             else
                 hitInteract.ticks = hitInteract.ticks + 1

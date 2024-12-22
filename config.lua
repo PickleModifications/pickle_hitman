@@ -8,7 +8,7 @@ Config.RenderDistance = 20.0 -- Scenario display Radius.
 
 Config.InteractDistance = 1.5 -- Interact Radius
 
-Config.UseTarget = false -- When set to true, it'll use targeting instead of key-presses to interact.
+Config.UseTarget = true -- When set to true, it'll use targeting instead of key-presses to interact.
 
 Config.NoModelTargeting = true -- When set to true and using Target, it'll spawn a small invisible prop so you can third-eye when no entity is defined.
 
@@ -37,7 +37,11 @@ Config.Burial = {
         enabled = false,
     },
     locations = {
-        { coords = vector3(-132.5433, -806.3687, 31.9111), heading = 78.0663 },
+        { coords = vector3(974.6524, -2167.1689, 29.4616), heading = 356.4430 }, -- Acid
+        { coords = vector3(1686.9285, 39.1528, 161.7674), heading = 186.5351 }, -- Dock
+        { coords = vector3(-279.2317, 2842.7998, 54.0298), heading = 330.9481 }, -- Grave
+        { coords = vector3(-85.6894, 6233.7188, 31.0911), heading = 122.2676 }, -- Chicken
+        { coords = vector3(-552.1412, 5328.3335, 73.6392), heading = 339.5307 }, -- Sawmill
     },
 }
 
@@ -89,14 +93,20 @@ Config.DefaultPosition = {x = 1510, y = 10} -- Default position for the Overlay 
 
 Config.PlayerHits = {
     blip = {
-        enabled = false,
+        enabled = true,
+        refreshTime = 5, -- Every x seconds, refresh the area position of the bounty target.
+        labelPrefix = "Hit Target:", -- Prefix for the blip label. Bounty: NAME_HERE
+        sprite = 378,
+        color = 1,
+        scale = 0.8,
+        radius = { color = 1, alpha = 127, size = 400.0 }
     }
 }
 
 Config.NPCTargets = {
     enabled = true,
     generateCooldown = 30, -- Cooldown in seconds for generating a new NPC hit (this is skipped during server start).
-    maxNPCTargets = 10, -- Maximum amount of NPC hit targets that can be available at once.
+    maxNPCTargets = 0, -- Maximum amount of NPC hit targets that can be available at once.
     rewardRange = {1000, 5000}, -- Minimum and maximum reward for NPC hit targets.
     maxDistance = 200.0, -- Maximum distance from the player a spawned NPC hit can be before it fails the mission.
     maxDrivingTime = 180, -- Maximum time in seconds the NPC hit can be driving before it stops the car to get out and run / shoot.

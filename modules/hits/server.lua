@@ -333,6 +333,7 @@ RegisterNetEvent("pickle_hitman:acceptHit", function(target)
     end
     local hit = HitRegistry[target]
     if not hit then return ShowNotification(source, _L("hit_not_exist")) end
+    if target == GetIdentifier(source) then return ShowNotification(source, _L("hit_cant_self")) end
     if HitmanPlayers[source] then return ShowNotification(source, _L("hit_already_accepted")) end
     if not Config.HitPermissions.acceptHits(source, hit, true) then
         return ShowNotification(source, _L("no_permission_hit"))
@@ -374,19 +375,22 @@ RegisterNetEvent("pickle_hitman:addPlayerToHit", function(data)
     local source = source
     local permissions = GetPlayerPermissions(source)
     local target = GetIdentifier(data.source)
-    if not target or HitRegistry[target] then return end
+    if not target or not data.reward or data.reward < 0 or HitRegistry[target] then return end
+    local money = GetMoney(source)
+    if money < data.reward then return ShowNotification(source, _L("hit_not_enough_money")) end
+    RemoveMoney(source, data.reward)
     local hit = {
         target = target,
         targetname = GetPlayerCharacterName(data.source),
         image = data.image,
         issuer = GetIdentifier(source),
         reward = data.reward or 0,
-        description = _L("hit_wanted"),
+        description = data.description,
         datetime = os.time(),
         risk = 3,
     }
     AddHitToRegistry(hit, false, true)
-    ShowNotification(source, _L("hit_place_title"))
+    ShowNotification(source, _L("hit_place_title", NumberWithCommas(data.reward)))
 end)
 
 RegisterNetEvent("pickle_hitman:completeHit", function()
@@ -430,6 +434,15 @@ CreateThread(function()
         for k,v in pairs(HitInfo) do 
             if v.source then
                 local hit = HitRegistry[k]
+                for hitmanSource,hitman in pairs(HitmanPlayers) do
+                    if hitman.target == k then
+                        local ped = GetPlayerPed(v.source)
+                        TriggerClientEvent("pickle_hitman:refreshHitPosition", hitmanSource, {
+                            id = k,
+                            coords = GetEntityCoords(ped),
+                        })
+                    end
+                end
             end
         end
         Wait((Config.PlayerHits.blip.refreshTime or 10) * 1000)

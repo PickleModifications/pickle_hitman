@@ -56,8 +56,24 @@ function CameraLoop(trackData)
         })
         CreateThread(function()
             while usingCamera and CurrentHit do
-                if (not targetPed or not DoesEntityExist(targetPed)) and NetworkDoesEntityExistWithNetworkId(trackData.netId) then
-                    targetPed = NetToPed(trackData.netId)
+                if trackData.trackType == "player" then
+                    local targetPlayer
+                    for i=1, #GetActivePlayers() do
+                        local player = GetActivePlayers()[i]
+                        if GetPlayerServerId(player) == trackData.serverId then
+                            targetPlayer = player
+                            break
+                        end
+                    end
+                    if targetPlayer then
+                        targetPed = GetPlayerPed(targetPlayer)
+                    else
+                        targetPed = nil
+                    end
+                else
+                    if (not targetPed or not DoesEntityExist(targetPed)) and NetworkDoesEntityExistWithNetworkId(trackData.netId) then
+                        targetPed = NetToPed(trackData.netId)
+                    end
                 end
                 Wait(1000)
             end

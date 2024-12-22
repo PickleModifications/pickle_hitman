@@ -52,6 +52,9 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
     useNuiEvent("setConfig", function(config) {
         setConfig(config);
     });
+    useNuiEvent("updatePermissions", function(data) {
+        setConfig({...config, permissions: data.permissions});
+    });
 
     return (
         <ConfigContext.Provider value={{ config, setConfig }}>

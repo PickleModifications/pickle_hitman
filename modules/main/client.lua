@@ -56,6 +56,12 @@ RegisterNetEvent("pickle_hitman:resyncPermissions", function(permissions)
     UpdatePermissions(permissions)
 end)
 
+AddEventHandler('gameEventTriggered', function(event, args)
+    if event ~= "CEventNetworkEntityDamage" or GetEntityType(args[1]) ~= 1 or NetworkGetPlayerIndexFromPed(args[1]) ~= PlayerId() then return end
+    if not IsEntityDead(PlayerPedId()) then return end
+    TriggerServerEvent("pickle_hitman:playerDied")
+end)
+
 RegisterNUICallback("updatePosition", function(data, cb)
     SetResourceKvp("pickle_hitman:position", json.encode(data))
     cb(true)
@@ -87,7 +93,10 @@ RegisterNUICallback("requestConfig", function(data, cb)
                 name = "hitman_use_phone",
                 label = "Hitman Agency",
                 onSelect = function(data)
-                    SetAppDisplay(true)
+                    ServerCallback("pickle_hitman:getPermissions", function(permissions)
+                        UpdatePermissions(permissions)
+                        SetAppDisplay(true)
+                    end)
                 end
             }
         })
