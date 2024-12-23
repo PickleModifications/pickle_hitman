@@ -47,6 +47,9 @@ function CameraLoop(trackData)
         SetCamFov(cam, CAMERA_VALUES.calculatedFov)
         SetCamRot(cam, 0.0, 0.0, GetEntityHeading(playerPed), 2)
         RenderScriptCams(true, false, 0, true, false)
+        local obj = CreateProp(`prop_pap_camera_01`, GetEntityCoords(playerPed), true, true)
+        local boneIndex = GetPedBoneIndex(playerPed, 28422)
+        AttachEntityToEntity(obj, playerPed, boneIndex, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, true, true, false, true, 1, true)
         local targetPed = nil
         local cameraState = "idle"
         local scanTime = 0
@@ -56,6 +59,10 @@ function CameraLoop(trackData)
         })
         CreateThread(function()
             while usingCamera and CurrentHit do
+                if not IsEntityPlayingAnim(playerPed, "amb@world_human_paparazzi@male@base", "base", 3) then
+                    ClearPedTasksImmediately(playerPed)
+                    PlayAnim(playerPed, "amb@world_human_paparazzi@male@base", "base", -8.0, 8.0, -1, 49, 0, false, false, false)
+                end
                 if trackData.trackType == "player" then
                     local targetPlayer
                     for i=1, #GetActivePlayers() do
@@ -139,6 +146,8 @@ function CameraLoop(trackData)
             end
             Wait(0)
         end
+        DeleteEntity(obj)
+        ClearPedTasksImmediately(PlayerPedId())
         usingCamera = false
         cameraState = nil
         SendNUIMessage({

@@ -86,7 +86,6 @@ RegisterNUICallback("requestConfig", function(data, cb)
             {name = "hits", label = _L("header_hit")},
         }
     })
-    TriggerServerEvent("pickle_hitman:acceptHit")
     if Config.UseTarget then
         AddTargetModel(Config.PhoneboxModels, 2.5, {
             {

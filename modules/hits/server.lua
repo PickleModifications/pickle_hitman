@@ -48,12 +48,16 @@ function RemoveHitFromRegistry(target, ignoreSync, deleteSQL, source)
         dprint("Hit does not exist for target: " .. target)
         return
     end
-    print(HitRegistry[target].npc)
     if HitRegistry[target].npc then
         GenerateNPCHit(false)
     end
     HitRegistry[target] = nil
     HitInfo[target] = nil
+    for k,v in pairs(HitmanPlayers) do
+        if v.target == target then
+            HitmanPlayers[k] = nil
+        end
+    end
     if source then
         TriggerClientEvent("pickle_hitman:setHitState", -1, target, {
             type = "removeHitTarget",
@@ -126,7 +130,7 @@ end
 
 exports("GetPlayerCurrentHit", GetPlayerCurrentHit)
 
-function CancelHit(target, remove)
+function CancelHit(target, source, remove)
     local hit = HitRegistry[target]
     if remove then
         RemoveHitFromRegistry(target, false, true)
@@ -134,11 +138,24 @@ function CancelHit(target, remove)
         hit.hitmanId = nil
         UpdateHit(target, hit)
     end
-    HitInfo[target] = nil
-    for k,v in pairs(HitmanPlayers) do
-        if v.target == target then
-            HitmanPlayers[k] = nil
+    if source then
+        HitmanPlayers[source] = nil
+        local stillActive = false
+        for k,v in pairs(HitmanPlayers) do
+            if v.target == target then
+                stillActive = true
+            end
         end
+        if not stillActive then
+            HitInfo[target] = nil
+        end
+    else
+        for k,v in pairs(HitmanPlayers) do
+            if v.target == target then
+                HitmanPlayers[k] = nil
+            end
+        end
+        HitInfo[target] = nil
     end
     TriggerClientEvent("pickle_hitman:setHitState", -1, target, {
         type = "removeHitTarget"
@@ -158,7 +175,7 @@ function CompleteHit(identifier, source)
     RemoveHitFromRegistry(identifier, false, true, source)
 end
 
-function IsPlayerHitHunter(source)
+function IsPlayerHitman(source)
     return HitmanPlayers[source] ~= nil
 end
 
@@ -170,7 +187,7 @@ function GetNPCTargetHitman(identifier)
     end
 end
 
-exports("IsPlayerHitHunter", IsPlayerHitHunter)
+exports("IsPlayerHitman", IsPlayerHitman)
 
 RegisterNetEvent("pickle_hitman:setCurrentHitNPC", function(netId)
     local source = source
@@ -179,9 +196,6 @@ RegisterNetEvent("pickle_hitman:setCurrentHitNPC", function(netId)
     if HitInfo[currentHitId] then return end
     HitInfo[currentHitId] = {
         netId = netId,
-        currentVehicle = nil,
-        isDetained = false,
-        dragger = nil,
     }
     CreateThread(function()
         while HitRegistry[currentHitId] and HitInfo[currentHitId] do 
@@ -200,121 +214,14 @@ RegisterNetEvent("pickle_hitman:setCurrentHitNPC", function(netId)
     })
 end)
 
-RegisterNetEvent("pickle_hitman:hitInteract", function(identifier, interactType, data)
-    local source = source
-    local permissions = GetPlayerPermissions(source)
-    local hit = HitRegistry[identifier]
-    local hitInfo = HitInfo[identifier]
-    if not hit or not hitInfo then return end
-    if not HitmanPlayers[source] then return ShowNotification(source, _L("no_permission_hit")) end
-    if interactType == "detain" then
-        if not hitInfo or hitInfo.isDetained then 
-            return ShowNotification(source, _L("hit_already_detained"))
-        end
-        hitInfo.isDetained = true
-        -- local ped = NetworkGetEntityFromNetworkId(hitInfo.netId)
-        -- ClearPedTasksImmediately(ped)
-        -- TaskPlayAnim(ped, "mp_arrest_paired", "crook_p2_back_left", 8.0, -8.0, 5500, 33, 0, false, false, false)
-
-        TriggerClientEvent("pickle_hitman:setHitState", -1, identifier, {
-            type = "detainHitTarget",
-            source = source,
-            coords = data.coords,
-            heading = data.heading,
-        })
-    elseif interactType == "drag" then
-        if not hitInfo or hitInfo.dragger then 
-            return ShowNotification(source, _L("hit_someone_dragging"))
-        end
-        if hitInfo.currentVehicle then
-            return ShowNotification(source, _L("hit_need_out_vehicle"))
-        end
-        hitInfo.dragger = source
-        TriggerClientEvent("pickle_hitman:setHitState", -1, identifier, {
-            type = "dragHitTarget",
-            source = source,
-        })
-    elseif interactType == "stopDragging" then
-        if not hitInfo or not hitInfo.dragger or hitInfo.dragger ~= source then 
-            return ShowNotification(source, _L("hit_someone_dragging"))
-        end
-        hitInfo.dragger = nil
-        TriggerClientEvent("pickle_hitman:setHitState", -1, identifier, {
-            type = "releaseHitTarget",
-            source = source,
-        })
-    elseif interactType == "completeHitTarget" then
-        CompleteHit(identifier, source, true)
-    end
-end)
-
-RegisterNetEvent("pickle_hitman:vehicleInteract", function(netId)
-    local source = source
-    local permissions = GetPlayerPermissions(source)
-    if not HitmanPlayers[source] then return ShowNotification(source, _L("no_permission_hit")) end
-    local hitId = nil
-    local closestHit = { id = nil, distance = nil }
-    local playerCoords = GetEntityCoords(GetPlayerPed(source))
-    for k,v in pairs(HitInfo) do
-        if v.currentVehicle == netId then
-            hitId = k
-        end
-        local ped
-        if v.netId then
-            ped = NetworkGetEntityFromNetworkId(v.netId)
-        elseif v.source then
-            ped = GetPlayerPed(v.source)
-        end
-        if DoesEntityExist(ped) then
-            local pedCoords = GetEntityCoords(ped)
-            local distance = #(pedCoords - playerCoords)
-            if closestHit.id == nil or distance < closestHit.distance then
-                closestHit.id = k
-                closestHit.distance = distance
-            end
-        end
-    end
-    if hitId then -- Take out of current vehicle.
-        HitInfo[hitId].currentVehicle = nil
-        TriggerClientEvent("pickle_hitman:setHitState", -1, hitId, {
-            type = "removeHitFromVehicle",
-            source = source,
-            currentVehicle = netId,
-        })
-    elseif closestHit.id and closestHit.distance < 5.0 then -- Put in closest vehicle.
-        if HitInfo[closestHit.id].dragger then
-            local dragger = HitInfo[closestHit.id].dragger
-            TriggerClientEvent("pickle_hitman:setHitState", -1, closestHit.id, {
-                type = "releaseHitTarget",
-                source = dragger,
-            })
-            SetTimeout(100, function()
-                TriggerClientEvent("pickle_hitman:setHitState", -1, closestHit.id, {
-                    type = "putHitInVehicle",
-                    source = dragger,
-                    currentVehicle = netId,
-                })
-            end)
-            HitInfo[closestHit.id].dragger = nil
-        else
-            TriggerClientEvent("pickle_hitman:setHitState", -1, closestHit.id, {
-                type = "putHitInVehicle",
-                source = source,
-                currentVehicle = netId,
-            })
-        end
-        HitInfo[closestHit.id].currentVehicle = netId
-
-    else
-        dprint("FAILED TO PUT IN / OUT VEHICLE")
-    end
-end)
-
 RegisterNetEvent("pickle_hitman:removeHit", function(target)
     local permissions = GetPlayerPermissions(source)
     local hit = HitRegistry[target]
     if not hit then return ShowNotification(source, _L("hit_not_exist")) end
     if string.sub(target, 1, 4) == "npc:" then return ShowNotification(source, _L("hit_remove_is_npc")) end
+    if not Config.HitPermissions.cancelHits(source, hit, true) then
+        return ShowNotification(source, _L("no_permission_hit"))
+    end
     ShowNotification(source, _L("hit_canceled", hit.targetname))
     RemoveHitFromRegistry(target, false, true)
 end)
@@ -350,8 +257,6 @@ RegisterNetEvent("pickle_hitman:acceptHit", function(target)
         HitInfo[target] = {
             source = hit.source,
             currentVehicle = nil,
-            isDetained = false,
-            dragger = nil,
         }
         TriggerClientEvent("pickle_hitman:setHitState", -1, target, {
             type = "registerHitTarget",
@@ -368,7 +273,7 @@ RegisterNetEvent("pickle_hitman:cancelCurrentHit", function(fail)
     if not fail then
         ShowNotification(source, _L("hit_canceled", currentHit.targetname))
     end
-    CancelHit(currentHitId)
+    CancelHit(currentHitId, source, false)
 end)
 
 RegisterNetEvent("pickle_hitman:addPlayerToHit", function(data)
@@ -378,7 +283,6 @@ RegisterNetEvent("pickle_hitman:addPlayerToHit", function(data)
     if not target or not data.reward or data.reward < 0 or HitRegistry[target] then return end
     local money = GetMoney(source)
     if money < data.reward then return ShowNotification(source, _L("hit_not_enough_money")) end
-    RemoveMoney(source, data.reward)
     local hit = {
         target = target,
         targetname = GetPlayerCharacterName(data.source),
@@ -389,6 +293,8 @@ RegisterNetEvent("pickle_hitman:addPlayerToHit", function(data)
         datetime = os.time(),
         risk = 3,
     }
+    if not Config.HitPermissions.placeHits(source, hit, true) then return ShowNotification(source, _L("no_permission_hit")) end
+    RemoveMoney(source, data.reward)
     AddHitToRegistry(hit, false, true)
     ShowNotification(source, _L("hit_place_title", NumberWithCommas(data.reward)))
 end)

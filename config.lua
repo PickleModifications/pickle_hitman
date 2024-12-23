@@ -34,7 +34,12 @@ Config.PhoneboxLocations = {
 
 Config.Burial = {
     blip = {
-        enabled = false,
+        enabled = true,
+        label = "Hitman: Burial Site",
+        category = 1,
+        sprite = 119,
+        color = 1,
+        scale = 0.8,
     },
     locations = {
         { coords = vector3(974.6524, -2167.1689, 29.4616), heading = 356.4430 }, -- Acid
@@ -94,8 +99,8 @@ Config.DefaultPosition = {x = 1510, y = 10} -- Default position for the Overlay 
 Config.PlayerHits = {
     blip = {
         enabled = true,
-        refreshTime = 5, -- Every x seconds, refresh the area position of the bounty target.
-        labelPrefix = "Hit Target:", -- Prefix for the blip label. Bounty: NAME_HERE
+        refreshTime = 5, -- Every x seconds, refresh the area position of the target.
+        labelPrefix = "Hit Target:", -- Prefix for the blip label. Hit Target: NAME_HERE
         sprite = 378,
         color = 1,
         scale = 0.8,
@@ -106,7 +111,7 @@ Config.PlayerHits = {
 Config.NPCTargets = {
     enabled = true,
     generateCooldown = 30, -- Cooldown in seconds for generating a new NPC hit (this is skipped during server start).
-    maxNPCTargets = 0, -- Maximum amount of NPC hit targets that can be available at once.
+    maxNPCTargets = 10, -- Maximum amount of NPC hit targets that can be available at once.
     rewardRange = {1000, 5000}, -- Minimum and maximum reward for NPC hit targets.
     maxDistance = 200.0, -- Maximum distance from the player a spawned NPC hit can be before it fails the mission.
     maxDrivingTime = 180, -- Maximum time in seconds the NPC hit can be driving before it stops the car to get out and run / shoot.
@@ -120,12 +125,11 @@ Config.NPCTargets = {
         radius = { color = 1, alpha = 127, size = 100.0}
     },
     locations = {
-        { coords = vector3(-138.4072, -800.9176, 31.0378), heading = 63.6201 }
-        -- { coords = vector3(-58.4249, -146.6452, 56.3418), heading = 76.4960 },
-        -- { coords = vector3(-1447.3141, 23.2402, 51.5750), heading = 192.1936 },
-        -- { coords = vector3(-37.2097, -1727.6027, 28.2856), heading = 293.2387 },
-        -- { coords = vector3(76.4134, -1381.3384, 28.2774), heading = 33.1264 },
-        -- { coords = vector3(-652.7582, -758.3394, 24.9323), heading = 356.7576 },
+        { coords = vector3(-216.7631, -1970.6584, 27.7558), heading = 294.3834 },
+        { coords = vector3(198.7951, -1010.8240, 29.3041), heading = 257.8059 },
+        { coords = vector3(1108.8599, -630.8035, 56.8160), heading = 6.7750 },
+        { coords = vector3(295.7472, 182.7069, 104.2432), heading = 216.3967 },
+        { coords = vector3(-613.1423, -112.2452, 40.0083), heading = 194.8465 },
     },
     vehicles = { `adder`, `blista`, `asea`, `emperor`, `fugitive` }, -- Vehicles that can be spawned for NPC hit targets. Use `model_name` for models.
     weapons = { `WEAPON_PISTOL`, `WEAPON_KNIFE` }, -- Weapons that can be used by NPC hit targets. Use `WEAPON_NAME` for weapons.
@@ -159,7 +163,7 @@ Config.NPCTargets = {
     },
     -- Combat scenario chances:
     firearmAttack = 0.1, -- Chance of the NPC using a firearm attack. 0.1 means 10% chance.
-    meleeAttack = 0.3, -- Chance of the NPC using a melee attack. 0.3 means 30% chance.
-    fleeVehicle = 0.3, -- Chance of the NPC fleeing in a vehicle. 0.3 means 30% chance.
-    fleeFoot = 0.3, -- Chance of the NPC fleeing on foot. 0.3 means 30% chance.
+    meleeAttack = 0.1, -- Chance of the NPC using a melee attack. 0.1 means 10% chance.
+    fleeVehicle = 0.4, -- Chance of the NPC fleeing in a vehicle. 0.4 means 40% chance.
+    fleeFoot = 0.4, -- Chance of the NPC fleeing on foot. 0.4 means 40% chance.
 }

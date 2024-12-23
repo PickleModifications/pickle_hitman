@@ -69,7 +69,15 @@ function StartHitBurialMission()
             local location = Config.Burial.locations[i]
             local newLocation = {}
             if Config.Burial.blip.enabled then
-                newLocation.blip = CreateBlip(Config.Burial.blip)
+                newLocation.blip = CreateBlip({
+                    coords = location.coords,
+                    label = Config.Burial.blip.label,
+                    category = Config.Burial.blip.category,
+                    sprite = Config.Burial.blip.sprite,
+                    color = Config.Burial.blip.color,
+                    scale = Config.Burial.blip.scale,
+                    radius = Config.Burial.blip.radius,
+                })
             end
             locations[#locations + 1] = newLocation
         end
@@ -115,9 +123,9 @@ end
 
 function PerformScenario(scenario)
     local id = CurrentHit.id
-    SetTimeout(1000, function()
-        SetEntityHealth(CurrentHit.targetNPC, 0)
-    end)
+    -- SetTimeout(1000, function()
+    --     SetEntityHealth(CurrentHit.targetNPC, 0)
+    -- end)
     if scenario == "fleeFoot" or (scenario == "fleeVehicle" and CurrentHit.vehicle == nil) then
         while CurrentHit and CurrentHit.id == id and CurrentHit.targetNPC do
             local playerPed = PlayerPedId()
@@ -457,7 +465,6 @@ RegisterNetEvent("pickle_hitman:setHitState", function(identifier, data)
             source = data.source,
             netId = data.netId,
             currentVehicle = nil,
-            dragger = data.dragger or nil,
         }
         if CurrentHit and CurrentHit.id == identifier then
             if Config.UseTarget then
@@ -466,21 +473,6 @@ RegisterNetEvent("pickle_hitman:setHitState", function(identifier, data)
             ShowHitTargetOptions(identifier)
         end
     elseif data.type == "removeHitTarget" then
-        if HitInfo[identifier] then
-            if HitInfo[identifier].netId then
-                local ped = NetToPed(HitInfo[identifier].netId)
-                DetachEntity(ped, true, true)
-                ClearPedTasks(ped)
-                PlayAnim(ped, 'mp_arresting', 'idle', 8.0, -8, -1, 49, 0, 0, 0, 0)
-            end
-            if HitInfo[identifier].dragger and HitInfo[identifier].dragger == GetPlayerServerId(PlayerId()) then
-                ClearPedTasks(PlayerPedId())
-            end
-            if HitInfo[identifier].dragger and HitInfo[identifier].source == GetPlayerServerId(PlayerId()) then
-                DetachEntity(PlayerPedId(), true, true)
-                ClearPedTasks(PlayerPedId())
-            end
-        end
         if Config.UseTarget then
             RemoveTargetGlobalVehicle({{ name = "vehicle" }})
         end
@@ -542,23 +534,27 @@ RegisterNetEvent("pickle_hitman:acceptHit", function(target)
                 local playerPed = PlayerPedId()
                 local playerCoords = GetEntityCoords(playerPed)
                 local distance = #(playerCoords - location.coords)
-                if distance < 100.0 then
-                    CurrentHit.targetNPC = CreateNPC(GetHashKey(CurrentHit.npc.model), location.coords.x, location.coords.y, location.coords.z, location.heading, true, true)
-                    local netId = PedToNet(CurrentHit.targetNPC)
-                    if NetworkDoesNetworkIdExist(netId) then
-                        SetTimeout(1000, function()
-                            TriggerServerEvent("pickle_hitman:setCurrentHitNPC", netId)
-                        end)
-                    end
-                    if scenario == "fleeVehicle" then
-                        local vehicleModel = Config.NPCTargets.vehicles[#Config.NPCTargets.vehicles > 1 and math.random(1, #Config.NPCTargets.vehicles) or 1]
-                        local roadFound, roadCoords, roadHeading = GetClosestVehicleNodeWithHeading(location.coords.x, location.coords.y, location.coords.z, 0, 100.0, 100.0)
-                        if roadFound and #(roadCoords - location.coords) < 100.0 then
-                            CurrentHit.vehicle = CreateVeh(vehicleModel, roadCoords.x, roadCoords.y, roadCoords.z, roadHeading, true, true)
-                            SetVehicleEngineHealth(CurrentHit.vehicle, 500.0)
+                if distance < 200.0 then
+                    if not CurrentHit.targetNPC then
+                        CurrentHit.targetNPC = CreateNPC(GetHashKey(CurrentHit.npc.model), location.coords.x, location.coords.y, location.coords.z, location.heading, true, true)
+                        local netId = PedToNet(CurrentHit.targetNPC)
+                        if NetworkDoesNetworkIdExist(netId) then
+                            SetTimeout(1000, function()
+                                TriggerServerEvent("pickle_hitman:setCurrentHitNPC", netId)
+                            end)
                         end
+                        TaskWanderStandard(CurrentHit.targetNPC, 10.0, 10)
+                    elseif distance < 20.0 then
+                        if scenario == "fleeVehicle" then
+                            local vehicleModel = Config.NPCTargets.vehicles[#Config.NPCTargets.vehicles > 1 and math.random(1, #Config.NPCTargets.vehicles) or 1]
+                            local roadFound, roadCoords, roadHeading = GetClosestVehicleNodeWithHeading(location.coords.x, location.coords.y, location.coords.z, 0, 100.0, 100.0)
+                            if roadFound and #(roadCoords - location.coords) < 100.0 then
+                                CurrentHit.vehicle = CreateVeh(vehicleModel, roadCoords.x, roadCoords.y, roadCoords.z, roadHeading, true, true)
+                                SetVehicleEngineHealth(CurrentHit.vehicle, 500.0)
+                            end
+                        end
+                        break
                     end
-                    break
                 end
                 Wait(1000)
             end

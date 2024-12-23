@@ -1,12 +1,10 @@
 fx_version "cerulean"
 game "gta5"
 author "Pickle Mods"
-description "The Hitman System for FiveM"
-version "v1.0.2"
+description "The Best Hitman System for FiveM"
+version "v1.0.0"
 
 ui_page "nui/index.html"
-
-data_file 'DLC_ITYP_REQUEST' 'stream/*.ytyp'
 
 files {
 	"nui/index.html",
