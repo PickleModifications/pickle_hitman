@@ -81,6 +81,7 @@ Config.HitPermissions = {
         if hit and hit.issuer and identifier == hit.issuer then
             if processing then
                 Inventory.AddItem(source, "challengecoin", 1) -- This will return the coin to the player when they remove the hit.
+                AddMoney(source, hit.reward) -- This will return the reward to the player when they remove the hit.
             end
             return true
         elseif CheckPermission(source, { groups = { "admin", "god" }}) then
@@ -93,6 +94,8 @@ Config.HitPermissions = {
         end
     end,
 }
+
+Config.HitCooldown = 10 -- Cooldown in seconds for accepting a hit.
 
 Config.DefaultPosition = {x = 1510, y = 10} -- Default position for the Overlay UI.
 

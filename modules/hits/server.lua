@@ -1,6 +1,7 @@
 HitRegistry = {}
 HitInfo = {}
 HitmanPlayers = {}
+HitmanCooldown = {}
 
 function AddHitToRegistry(hit, ignoreSync, insertSQL) 
     if not hit.target then
@@ -171,6 +172,11 @@ function CompleteHit(identifier, source)
     local reward = hit.reward
     AddMoney(source, math.floor(reward))
     ShowNotification(source, _L("hit_reward_self", NumberWithCommas(reward)))
+    ConfigSV.logFunction("hitComplete", {
+        hitman = {identifier = GetIdentifier(source), source = source},
+        target = {identifier = identifier, source = hit.source},
+        reward = reward,
+    })
     HitmanPlayers[source] = nil
     RemoveHitFromRegistry(identifier, false, true, source)
 end
@@ -224,12 +230,17 @@ RegisterNetEvent("pickle_hitman:removeHit", function(target)
     end
     ShowNotification(source, _L("hit_canceled", hit.targetname))
     RemoveHitFromRegistry(target, false, true)
+    ConfigSV.logFunction("removeHit", {
+        remover = {identifier = GetIdentifier(source), source = source},
+        target = {identifier = target, source = hit.source},
+        reward = hit.reward,
+    })
 end)
 
 RegisterNetEvent("pickle_hitman:acceptHit", function(target)
     local source = source
     local target = target
-    if target == nil then -- TODO: REMOVE THIS WHEN DONE
+    if target == nil then -- TODO: REMOVE THIS WHEN DONE TODO2: ACTUALLY REMOVE THIS DUMBASS
         for k,v in pairs(HitRegistry) do
             target = k
             break
@@ -242,9 +253,12 @@ RegisterNetEvent("pickle_hitman:acceptHit", function(target)
     if not hit then return ShowNotification(source, _L("hit_not_exist")) end
     if target == GetIdentifier(source) then return ShowNotification(source, _L("hit_cant_self")) end
     if HitmanPlayers[source] then return ShowNotification(source, _L("hit_already_accepted")) end
+    local cooldownTimer = (HitmanCooldown[source] or 0) - os.time()
+    if cooldownTimer > 0 then return ShowNotification(source, _L("hit_cooldown", math.ceil(cooldownTimer / 60))) end
     if not Config.HitPermissions.acceptHits(source, hit, true) then
         return ShowNotification(source, _L("no_permission_hit"))
     end
+    HitmanCooldown[source] = os.time() + Config.HitCooldown
     HitmanPlayers[source] = {
         target = target
     }
@@ -264,6 +278,11 @@ RegisterNetEvent("pickle_hitman:acceptHit", function(target)
         })
     end
     TriggerClientEvent("pickle_hitman:acceptHit", source, target)
+    ConfigSV.logFunction("acceptHit", {
+        hitman = {identifier = GetIdentifier(source), source = source},
+        target = {identifier = target, source = hit.source},
+        reward = hit.reward,
+    })
 end)
 
 RegisterNetEvent("pickle_hitman:cancelCurrentHit", function(fail)
@@ -297,6 +316,11 @@ RegisterNetEvent("pickle_hitman:addPlayerToHit", function(data)
     RemoveMoney(source, data.reward)
     AddHitToRegistry(hit, false, true)
     ShowNotification(source, _L("hit_place_title", NumberWithCommas(data.reward)))
+    ConfigSV.logFunction("placeHit", {
+        issuer = {identifier = GetIdentifier(source), source = source},
+        target = {identifier = target, source = data.source},
+        reward = data.reward,
+    })
 end)
 
 RegisterNetEvent("pickle_hitman:completeHit", function()

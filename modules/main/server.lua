@@ -78,13 +78,16 @@ end)
 RegisterNetEvent("pickle_hitman:playerDied", function()
     local identifier = GetIdentifier(source)
     local hitInfo = HitInfo[identifier]
-    if hitInfo then
+    if hitInfo and not hitInfo.deceased then
         hitInfo.deceased = true
         for k,v in pairs(HitmanPlayers) do
             if v.target == identifier then
                 TriggerClientEvent("pickle_hitman:onTargetDeath", k, identifier)
             end
         end
+        ConfigSV.logFunction("hitKilled", {
+            target = {identifier = identifier, source = source},
+        })
     end
 end)
 

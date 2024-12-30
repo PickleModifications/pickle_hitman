@@ -58,4 +58,5 @@ Language["en"] = {
     hit_reward_self = "You have received %s for completing the hit contract.",
     hit_no_vehicle = "There is no vehicle nearby to place the target in / out of.",
     hit_not_exist = "The hit contract you are trying to interact with does not exist.",
+    hit_cooldown = "You must wait %s minute(s) before you can accept another hit contract.",
 }

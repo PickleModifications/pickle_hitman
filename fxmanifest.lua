@@ -32,12 +32,14 @@ server_scripts {
 	"@mysql-async/lib/MySQL.lua",
 	"bridge/**/**/server.lua",
 	"modules/**/server.lua",
+	"config_sv.lua",
 }
 
 lua54 'yes'
 
 escrow_ignore {
 	"config.lua",
+	"config_sv.lua",
 	"__INSTALL/**/*.*",
 	"bridge/**/**/*.*",
 	"bridge/**/*.*",
