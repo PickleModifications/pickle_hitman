@@ -2,7 +2,7 @@ fx_version "cerulean"
 game "gta5"
 author "Pickle Mods"
 description "The Best Hitman System for FiveM"
-version "v1.0.0"
+version "v1.0.1"
 
 ui_page "nui/index.html"
 

@@ -59,6 +59,7 @@ function CameraLoop(trackData)
         })
         CreateThread(function()
             while usingCamera and CurrentHit do
+                SetCurrentPedWeapon(playerPed, `WEAPON_UNARMED`, true)
                 if not IsEntityPlayingAnim(playerPed, "amb@world_human_paparazzi@male@base", "base", 3) then
                     ClearPedTasksImmediately(playerPed)
                     PlayAnim(playerPed, "amb@world_human_paparazzi@male@base", "base", -8.0, 8.0, -1, 49, 0, false, false, false)
