@@ -732,7 +732,7 @@ RegisterCommand("+openHitInteraction", function()
     hitInteract.holding = true
     hitInteract.ticks = 0
     CreateThread(function()
-        while hitInteract.holding do
+        while CurrentHit and hitInteract.holding do
             if GetActualEntitySpeed(PlayerPedId()) > 0.01 or IsPlayerClimbing(PlayerId()) or IsPedJumping(PlayerPedId()) or IsPedFalling(PlayerPedId()) then
                 hitInteract.ticks = 0
             else

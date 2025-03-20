@@ -2,7 +2,7 @@ fx_version "cerulean"
 game "gta5"
 author "Pickle Mods"
 description "The Best Hitman System for FiveM"
-version "v1.0.1"
+version "v1.0.2"
 
 ui_page "nui/index.html"
 
@@ -45,4 +45,7 @@ escrow_ignore {
 	"bridge/**/*.*",
     "locales/locale.lua",
     "locales/translations/*.lua",
+	-- Comment below if source --
+	"modules/**/*.*",
+	"core/*.*",
 }
